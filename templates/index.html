@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X ポスト分析＆バズ投稿生成ツール</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --card: #12121a;
+    --border: #2a2a3a;
+    --accent: #1d9bf0;
+    --accent2: #7c3aed;
+    --text: #f0f0f0;
+    --muted: #888;
+    --success: #2ecc71;
+    --warn: #f39c12;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* HERO */
+  .hero {
+    text-align: center;
+    padding: 70px 20px 50px;
+    background: radial-gradient(ellipse at top, #0a1a2f 0%, var(--bg) 70%);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 20px;
+    padding: 4px 16px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+  .hero h1 { font-size: clamp(26px, 4vw, 48px); font-weight: 800; line-height: 1.2; margin-bottom: 14px; }
+  .hero h1 span {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero p { color: var(--muted); font-size: 15px; max-width: 480px; margin: 0 auto; line-height: 1.7; }
+
+  /* CONTAINER */
+  .container { max-width: 760px; margin: 0 auto; padding: 40px 20px 100px; }
+
+  /* CARD */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 20px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: #3a3a5a; }
+  .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .card-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .card-title { font-size: 17px; font-weight: 700; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* FORM */
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 7px; font-weight: 600; letter-spacing: 0.5px; }
+  textarea, input[type="text"], input[type="number"], input[type="password"] {
+    width: 100%;
+    background: #0d0d18;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 12px 14px;
+    transition: border-color 0.2s;
+    outline: none;
+    resize: vertical;
+  }
+  textarea { min-height: 120px; line-height: 1.7; }
+  textarea:focus, input:focus { border-color: var(--accent); }
+  .form-group { margin-bottom: 18px; }
+
+  .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 560px) { .row4 { grid-template-columns: 1fr 1fr; } }
+  .eng-label { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.3px; }
+
+  /* CHAR COUNT */
+  .char-count { text-align: right; font-size: 11px; color: var(--muted); margin-top: 5px; }
+  .char-count.over { color: #e74c3c; font-weight: 700; }
+
+  /* SUBMIT BUTTON */
+  .btn-analyze {
+    width: 100%; padding: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: 12px; color: #fff;
+    font-size: 16px; font-weight: 800; cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s; letter-spacing: 0.5px;
+  }
+  .btn-analyze:hover { opacity: 0.9; }
+  .btn-analyze:active { transform: scale(0.99); }
+  .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* LOADING */
+  .loading { display: none; text-align: center; padding: 40px; color: var(--muted); }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ERROR */
+  .error-box {
+    display: none;
+    background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.4);
+    border-radius: 10px; padding: 14px 18px; color: #e74c3c; font-size: 14px; margin-top: 16px;
+  }
+
+  /* URL ROW */
+  .url-row { display: flex; gap: 10px; }
+  .url-row input { flex: 1; }
+  .btn-fetch {
+    flex-shrink: 0; padding: 0 20px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: 10px; color: #fff;
+    font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: opacity 0.2s;
+  }
+  .btn-fetch:hover { opacity: 0.85; }
+  .btn-fetch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .url-status { margin-top: 8px; font-size: 12px; min-height: 18px; }
+  .url-status.ok      { color: var(--success); }
+  .url-status.err     { color: #e74c3c; }
+  .url-status.loading { color: var(--muted); }
+
+  /* TWEET PREVIEW */
+  .tweet-preview {
+    display: none;
+    background: #0d0d18;
+    border: 1px solid rgba(29, 155, 240, 0.3);
+    border-radius: 14px;
+    padding: 18px;
+    margin-top: 14px;
+  }
+  .tweet-preview-author {
+    font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 10px;
+  }
+  .tweet-preview-text {
+    font-size: 14px; line-height: 1.8; color: var(--text);
+    white-space: pre-wrap; word-break: break-all; margin-bottom: 14px;
+  }
+  .tweet-preview-stats {
+    display: flex; gap: 18px; font-size: 12px; color: var(--muted);
+    padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .tweet-preview-stats span { display: flex; align-items: center; gap: 4px; }
+
+  /* RESULTS */
+  #results { display: none; margin-top: 8px; }
+
+  /* ANALYSIS GRID */
+  .analysis-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .analysis-grid { grid-template-columns: 1fr; } }
+  .analysis-item {
+    background: #0d0d18; border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+  }
+  .analysis-item.full-width { grid-column: 1 / -1; }
+  .analysis-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .analysis-value { font-size: 14px; line-height: 1.7; color: var(--text); }
+  .keyword-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .keyword-tag {
+    background: rgba(29, 155, 240, 0.15); border: 1px solid rgba(29, 155, 240, 0.3);
+    border-radius: 20px; padding: 3px 12px; font-size: 12px; color: var(--accent); font-weight: 600;
+  }
+  .summary-box {
+    background: linear-gradient(135deg, rgba(29, 155, 240, 0.08), rgba(124, 58, 237, 0.08));
+    border: 1px solid rgba(29, 155, 240, 0.25);
+    border-radius: 12px; padding: 18px; font-size: 15px; line-height: 1.8; color: var(--text);
+  }
+
+  /* ENGAGEMENT ANALYSIS */
+  #engagementCard { display: none; }
+  .eng-virality-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, rgba(243,156,18,0.2), rgba(231,76,60,0.15));
+    border: 1px solid rgba(243,156,18,0.45);
+    border-radius: 20px; padding: 4px 16px; font-size: 12px; font-weight: 700;
+    color: var(--warn); margin-bottom: 16px; letter-spacing: 0.3px;
+  }
+  .eng-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .eng-grid { grid-template-columns: 1fr; } }
+  .eng-item { background: #0d0d18; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .eng-item-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--warn); margin-bottom: 8px; }
+  .eng-item-value { font-size: 14px; line-height: 1.7; color: var(--text); }
+  .eng-insight-box {
+    background: linear-gradient(135deg, rgba(243,156,18,0.06), rgba(231,76,60,0.06));
+    border: 1px solid rgba(243,156,18,0.25);
+    border-radius: 12px; padding: 18px; font-size: 14px; line-height: 1.8; color: var(--text); margin-top: 12px;
+  }
+  .eng-insight-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--warn); margin-bottom: 8px; }
+
+  /* POST CARDS */
+  .posts-list { display: flex; flex-direction: column; gap: 16px; }
+  .post-card {
+    background: #0d0d18; border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+    position: relative; transition: border-color 0.2s;
+  }
+  .post-card:hover { border-color: var(--accent); }
+  .post-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 50%; font-size: 12px; font-weight: 800; margin-bottom: 12px;
+  }
+  .post-text { font-size: 15px; line-height: 1.8; color: var(--text); white-space: pre-wrap; word-break: break-all; margin-bottom: 14px; }
+  .post-reason { font-size: 12px; color: var(--muted); line-height: 1.6; padding-top: 12px; border-top: 1px solid var(--border); }
+  .post-reason-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent2); margin-bottom: 4px; }
+  .post-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+  .char-badge { font-size: 11px; color: var(--muted); }
+  .btn-copy {
+    background: rgba(29, 155, 240, 0.15); border: 1px solid rgba(29, 155, 240, 0.3);
+    border-radius: 8px; color: var(--accent); font-size: 12px; font-weight: 700;
+    padding: 6px 14px; cursor: pointer; transition: background 0.2s;
+  }
+  .btn-copy:hover { background: rgba(29, 155, 240, 0.3); }
+  .btn-copy.copied { color: var(--success); border-color: var(--success); background: rgba(46, 204, 113, 0.1); }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-size: 18px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::before {
+    content: ''; display: inline-block; width: 4px; height: 20px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent2)); border-radius: 2px;
+  }
+
+  /* ACCOUNT SETUP */
+  .account-banner {
+    display: none;
+    background: rgba(243, 156, 18, 0.08); border: 1px solid rgba(243, 156, 18, 0.35);
+    border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; font-size: 13px; color: var(--warn);
+  }
+  .account-banner a { color: var(--warn); font-weight: 700; cursor: pointer; text-decoration: underline; }
+  details.setup-details {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 20px; overflow: hidden;
+  }
+  details.setup-details summary {
+    padding: 18px 24px; font-size: 14px; font-weight: 700; cursor: pointer;
+    list-style: none; display: flex; align-items: center; gap: 10px; user-select: none;
+  }
+  details.setup-details summary::-webkit-details-marker { display: none; }
+  details.setup-details summary::after { content: '▸'; margin-left: auto; transition: transform 0.2s; font-size: 12px; color: var(--muted); }
+  details.setup-details[open] summary::after { transform: rotate(90deg); }
+  .setup-body { padding: 0 24px 24px; }
+  .setup-desc { font-size: 12px; color: var(--muted); line-height: 1.7; margin-bottom: 18px; }
+  .account-status-ok {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--success);
+    background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3);
+    border-radius: 20px; padding: 3px 12px; margin-left: 8px;
+  }
+  .setup-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 480px) { .setup-row { grid-template-columns: 1fr; } }
+  .btn-setup {
+    padding: 12px 24px;
+    background: rgba(29, 155, 240, 0.15); border: 1px solid rgba(29, 155, 240, 0.4);
+    border-radius: 10px; color: var(--accent); font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.2s;
+  }
+  .btn-setup:hover { background: rgba(29, 155, 240, 0.25); }
+  .btn-setup:disabled { opacity: 0.4; cursor: not-allowed; }
+  .setup-result { margin-top: 12px; font-size: 12px; min-height: 18px; }
+  .setup-result.ok  { color: var(--success); }
+  .setup-result.err { color: #e74c3c; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-badge">AI Powered</div>
+  <h1>X ポスト<span>バズ分析</span>ツール</h1>
+  <p>ツイートURLを貼るだけでエンゲージメントを自動取得。なぜバズったかを解明し、新しい投稿案を自動生成します。</p>
+</div>
+
+<div class="container">
+
+  <!-- アカウント未設定バナー -->
+  <div class="account-banner" id="noBanner">
+    Xアカウントが未設定です。エンゲージメント自動取得を使うには
+    <a onclick="document.getElementById('setupDetails').open=true; setupDetails.scrollIntoView({behavior:'smooth'})">
+      アカウントを設定
+    </a>してください。
+  </div>
+
+  <!-- X アカウント設定 -->
+  <details class="setup-details" id="setupDetails">
+    <summary>
+      X アカウント設定（エンゲージメント自動取得に必要）
+      <span class="account-status-ok" id="accountOkBadge" style="display:none">✓ 設定済み</span>
+    </summary>
+    <div class="setup-body">
+      <p class="setup-desc">
+        Chromeで <strong>x.com</strong> にログインした状態で以下を開きます：<br>
+        <strong>F12（DevTools）→ Application タブ → Cookies → https://x.com</strong><br>
+        一覧から <code>auth_token</code> と <code>ct0</code> の Value をコピーして貼り付けてください。
+      </p>
+      <div class="form-group">
+        <label>auth_token（必須）</label>
+        <input type="password" id="setupAuthToken" placeholder="auth_token の値を貼り付け">
+      </div>
+      <div class="form-group">
+        <label>ct0（必須）</label>
+        <input type="text" id="setupCt0" placeholder="ct0 の値を貼り付け">
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>ユーザー名（任意・管理用ラベル）</label>
+        <input type="text" id="setupUsername" placeholder="@username（省略可）">
+      </div>
+      <button class="btn-setup" id="setupBtn" onclick="setupAccount()">保存して有効化</button>
+      <div class="setup-result" id="setupResult"></div>
+    </div>
+  </details>
+
+  <!-- 入力カード -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">🔗</div>
+      <div>
+        <div class="card-title">ツイートURLを入力</div>
+        <div class="card-sub">URLを貼るだけで本文・エンゲージメントを自動取得</div>
+      </div>
+    </div>
+
+    <!-- URL入力 -->
+    <div class="form-group">
+      <label>ツイートURL</label>
+      <div class="url-row">
+        <input type="text" id="tweetUrl" placeholder="https://x.com/username/status/1234567890">
+        <button class="btn-fetch" id="fetchBtn" onclick="fetchByUrl()">取得</button>
+      </div>
+      <div class="url-status" id="urlStatus"></div>
+
+      <!-- ツイートプレビュー -->
+      <div class="tweet-preview" id="tweetPreview">
+        <div class="tweet-preview-author" id="previewAuthor"></div>
+        <div class="tweet-preview-text" id="previewText"></div>
+        <div class="tweet-preview-stats">
+          <span>❤️ <span id="previewLikes">0</span></span>
+          <span>🔁 <span id="previewRt">0</span></span>
+          <span>💬 <span id="previewReplies">0</span></span>
+          <span>👁 <span id="previewViews">0</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- エンゲージメント数（自動入力・手動修正可） -->
+    <div class="form-group">
+      <label>エンゲージメント数（URLから自動入力・修正可）</label>
+      <div class="row4">
+        <div>
+          <div class="eng-label">❤️ いいね</div>
+          <input type="number" id="likes" placeholder="0" min="0">
+        </div>
+        <div>
+          <div class="eng-label">🔁 RT</div>
+          <input type="number" id="retweets" placeholder="0" min="0">
+        </div>
+        <div>
+          <div class="eng-label">💬 返信</div>
+          <input type="number" id="replies" placeholder="0" min="0">
+        </div>
+        <div>
+          <div class="eng-label">👁 インプレ</div>
+          <input type="number" id="impressions" placeholder="0" min="0">
+        </div>
+      </div>
+    </div>
+
+    <!-- ポスト本文（自動入力・手動修正可） -->
+    <div class="form-group">
+      <label>ポスト本文（URLから自動入力・修正可）</label>
+      <textarea id="postContent" placeholder="URLから自動入力されます。または直接貼り付けても使えます。"></textarea>
+      <div class="char-count" id="charCount">0 文字</div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:24px">
+      <label>発信テーマ・ジャンル（任意）</label>
+      <input type="text" id="theme" placeholder="例：副業・AI活用・マーケティング など">
+    </div>
+
+    <button class="btn-analyze" id="analyzeBtn" onclick="analyze()">
+      バズった理由を分析して新しいポスト案を生成
+    </button>
+
+    <div class="error-box" id="errorBox"></div>
+  </div>
+
+  <!-- ローディング -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>Claudeが分析中です...<br><span style="font-size:12px">通常10〜20秒ほどかかります</span></p>
+  </div>
+
+  <!-- 結果 -->
+  <div id="results">
+
+    <!-- バズ分析 -->
+    <div class="card">
+      <div class="section-title">バズった理由の分析</div>
+      <div style="margin-bottom:16px">
+        <div class="summary-box" id="analysisSummary"></div>
+      </div>
+      <div class="analysis-grid">
+        <div class="analysis-item">
+          <div class="analysis-label">フック（Hook）</div>
+          <div class="analysis-value" id="analysisHook"></div>
+        </div>
+        <div class="analysis-item">
+          <div class="analysis-label">構成パターン</div>
+          <div class="analysis-value" id="analysisStructure"></div>
+        </div>
+        <div class="analysis-item">
+          <div class="analysis-label">感情トリガー</div>
+          <div class="analysis-value" id="analysisEmotion"></div>
+        </div>
+        <div class="analysis-item">
+          <div class="analysis-label">刺さったキーワード</div>
+          <div class="keyword-tags" id="analysisKeywords"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- エンゲージメント数値分析 -->
+    <div class="card" id="engagementCard">
+      <div class="section-title">エンゲージメント数値分析</div>
+      <div id="engViralityBadge" class="eng-virality-badge"></div>
+      <div class="eng-grid">
+        <div class="eng-item">
+          <div class="eng-item-label">エンゲージメント率</div>
+          <div class="eng-item-value" id="engRate"></div>
+        </div>
+        <div class="eng-item">
+          <div class="eng-item-label">RT / いいね 比率</div>
+          <div class="eng-item-value" id="engRtLike"></div>
+        </div>
+        <div class="eng-item" style="grid-column:1/-1">
+          <div class="eng-item-label">返信パターン</div>
+          <div class="eng-item-value" id="engReplyPattern"></div>
+        </div>
+      </div>
+      <div class="eng-insight-box">
+        <div class="eng-insight-label">次の投稿設計への活かし方</div>
+        <div id="engInsight"></div>
+      </div>
+    </div>
+
+    <!-- 新投稿案 -->
+    <div class="card">
+      <div class="section-title">新しい投稿案（3案）</div>
+      <div class="posts-list" id="postsList"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // 文字数カウント
+  const postContent = document.getElementById('postContent');
+  const charCount   = document.getElementById('charCount');
+  postContent.addEventListener('input', () => {
+    const len = postContent.value.length;
+    charCount.textContent = `${len} 文字`;
+    charCount.classList.toggle('over', len > 280);
+  });
+
+  // 起動時アカウント確認
+  async function checkAccountStatus() {
+    try {
+      const res  = await fetch('/account_status');
+      const data = await res.json();
+      const ok   = data.active > 0;
+      document.getElementById('noBanner').style.display       = ok ? 'none' : 'block';
+      document.getElementById('accountOkBadge').style.display = ok ? 'inline-flex' : 'none';
+    } catch (_) {}
+  }
+  checkAccountStatus();
+
+  // アカウント設定
+  async function setupAccount() {
+    const btn       = document.getElementById('setupBtn');
+    const result    = document.getElementById('setupResult');
+    const authToken = document.getElementById('setupAuthToken').value.trim();
+    const ct0       = document.getElementById('setupCt0').value.trim();
+    const username  = document.getElementById('setupUsername').value.trim();
+
+    if (!authToken || !ct0) {
+      result.className = 'setup-result err';
+      result.textContent = 'auth_token と ct0 は必須です';
+      return;
+    }
+    btn.disabled = true;
+    result.className = 'setup-result loading';
+    result.textContent = '保存中...';
+    try {
+      const res  = await fetch('/setup_account', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, auth_token: authToken, ct0 }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        result.className = 'setup-result err';
+        result.textContent = data.error || 'エラー';
+      } else {
+        result.className = 'setup-result ok';
+        result.textContent = '設定完了！';
+        document.getElementById('noBanner').style.display       = 'none';
+        document.getElementById('accountOkBadge').style.display = 'inline-flex';
+      }
+    } catch (e) {
+      result.className = 'setup-result err';
+      result.textContent = '通信エラー: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ツイートURL → エンゲージメント＋本文を自動取得
+  async function fetchByUrl() {
+    const tweetUrl = document.getElementById('tweetUrl').value.trim();
+    if (!tweetUrl) { setUrlStatus('err', 'URLを入力してください'); return; }
+
+    const btn = document.getElementById('fetchBtn');
+    btn.disabled = true;
+    setUrlStatus('loading', '取得中... (数秒かかります)');
+    document.getElementById('tweetPreview').style.display = 'none';
+
+    try {
+      const res  = await fetch('/fetch_by_url', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tweet_url: tweetUrl }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        if (data.error === 'no_account') {
+          setUrlStatus('err', 'Xアカウントが未設定です。上の「X アカウント設定」から設定してください。');
+          document.getElementById('noBanner').style.display = 'block';
+        } else {
+          setUrlStatus('err', data.error);
+        }
+        return;
+      }
+
+      // 本文＋エンゲージメントを自動入力
+      postContent.value = data.text || '';
+      postContent.dispatchEvent(new Event('input'));
+      if (data.likes    != null) document.getElementById('likes').value       = data.likes;
+      if (data.retweets != null) document.getElementById('retweets').value    = data.retweets;
+      if (data.replies  != null) document.getElementById('replies').value     = data.replies;
+      if (data.views)            document.getElementById('impressions').value = data.views;
+
+      // プレビュー表示
+      document.getElementById('previewAuthor').textContent  = '@' + (data.author || '');
+      document.getElementById('previewText').textContent    = data.text || '';
+      document.getElementById('previewLikes').textContent   = (data.likes   || 0).toLocaleString();
+      document.getElementById('previewRt').textContent      = (data.retweets|| 0).toLocaleString();
+      document.getElementById('previewReplies').textContent = (data.replies || 0).toLocaleString();
+      document.getElementById('previewViews').textContent   = (data.views   || 0).toLocaleString();
+      document.getElementById('tweetPreview').style.display = 'block';
+
+      setUrlStatus('ok',
+        `取得完了 @${data.author} ｜ いいね ${(data.likes||0).toLocaleString()} / RT ${(data.retweets||0).toLocaleString()} / 返信 ${(data.replies||0).toLocaleString()}`
+      );
+
+    } catch (e) {
+      setUrlStatus('err', '通信エラー: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function setUrlStatus(type, msg) {
+    const el = document.getElementById('urlStatus');
+    el.className = 'url-status ' + type;
+    el.textContent = msg;
+  }
+
+  // 分析実行
+  async function analyze() {
+    const content = postContent.value.trim();
+    if (!content) { showError('ポスト内容を入力してください'); return; }
+
+    const btn     = document.getElementById('analyzeBtn');
+    const loading = document.getElementById('loading');
+    const results = document.getElementById('results');
+    const errorBox= document.getElementById('errorBox');
+
+    btn.disabled = true;
+    loading.style.display = 'block';
+    results.style.display = 'none';
+    errorBox.style.display = 'none';
+
+    try {
+      const res  = await fetch('/analyze', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          post_content: content,
+          likes:        document.getElementById('likes').value,
+          retweets:     document.getElementById('retweets').value,
+          replies:      document.getElementById('replies').value,
+          impressions:  document.getElementById('impressions').value,
+          theme:        document.getElementById('theme').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) { showError(data.error || 'エラーが発生しました'); return; }
+      renderResults(data);
+    } catch (e) {
+      showError('通信エラーが発生しました: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
+    }
+  }
+
+  function renderResults(data) {
+    const a = data.analysis;
+    document.getElementById('analysisSummary').textContent   = a.summary   || '';
+    document.getElementById('analysisHook').textContent      = a.hook      || '';
+    document.getElementById('analysisStructure').textContent = a.structure || '';
+    document.getElementById('analysisEmotion').textContent   = a.emotion   || '';
+
+    const kwContainer = document.getElementById('analysisKeywords');
+    kwContainer.innerHTML = '';
+    (a.keywords || []).forEach(kw => {
+      const tag = document.createElement('span');
+      tag.className = 'keyword-tag';
+      tag.textContent = kw;
+      kwContainer.appendChild(tag);
+    });
+
+    const engCard = document.getElementById('engagementCard');
+    const ea = data.engagement_analysis;
+    if (ea) {
+      document.getElementById('engViralityBadge').textContent = '📊 ' + (ea.virality || '');
+      document.getElementById('engRate').textContent          = ea.rate         || '';
+      document.getElementById('engRtLike').textContent        = ea.rt_like_ratio|| '';
+      document.getElementById('engReplyPattern').textContent  = ea.reply_pattern|| '';
+      document.getElementById('engInsight').textContent       = ea.insight      || '';
+      engCard.style.display = 'block';
+    } else {
+      engCard.style.display = 'none';
+    }
+
+    const list = document.getElementById('postsList');
+    list.innerHTML = '';
+    (data.posts || []).forEach((post, i) => {
+      const charLen = post.text ? post.text.length : 0;
+      list.innerHTML += `
+        <div class="post-card">
+          <div class="post-num">${i + 1}</div>
+          <div class="post-text" id="postText${i}">${escapeHtml(post.text || '')}</div>
+          <div class="post-reason">
+            <div class="post-reason-label">バズりやすい理由</div>
+            ${escapeHtml(post.reason || '')}
+          </div>
+          <div class="post-footer">
+            <span class="char-badge">${charLen} 文字</span>
+            <button class="btn-copy" onclick="copyPost(${i})">コピー</button>
+          </div>
+        </div>
+      `;
+    });
+
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function copyPost(index) {
+    const el   = document.getElementById(`postText${index}`);
+    const text = el ? el.textContent : '';
+    navigator.clipboard.writeText(text).then(() => {
+      const btns = document.querySelectorAll('.btn-copy');
+      const btn  = btns[index];
+      if (btn) {
+        btn.textContent = 'コピー完了!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 2000);
+      }
+    });
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('errorBox');
+    box.textContent = msg;
+    box.style.display = 'block';
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+
+</body>
+</html>
