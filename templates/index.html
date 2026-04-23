@@ -349,7 +349,6 @@
   <details class="setup-details" id="setupDetails">
     <summary>
       X アカウント設定（エンゲージメント自動取得に必要）
-      <span class="account-status-ok" id="accountOkBadge" style="display:none">✓ 設定済み</span>
     </summary>
     <div class="setup-body">
       <p class="setup-desc">
@@ -574,8 +573,7 @@
       const res  = await fetch('/account_status');
       const data = await res.json();
       const ok   = data.active > 0;
-      document.getElementById('noBanner').style.display       = ok ? 'none' : 'block';
-      document.getElementById('accountOkBadge').style.display = ok ? 'inline-flex' : 'none';
+      document.getElementById('noBanner').style.display = ok ? 'none' : 'block';
     } catch (_) {}
   }
   checkAccountStatus();
@@ -662,8 +660,7 @@
       } else {
         result.className = 'setup-result ok';
         result.textContent = '設定完了！';
-        document.getElementById('noBanner').style.display       = 'none';
-        document.getElementById('accountOkBadge').style.display = 'inline-flex';
+        document.getElementById('noBanner').style.display = 'none';
       }
     } catch (e) {
       result.className = 'setup-result err';
