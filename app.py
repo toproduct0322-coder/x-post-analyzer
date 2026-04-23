@@ -214,7 +214,7 @@ def build_prompt(post_content, likes, retweets, replies, impressions, theme, acc
 
     has_numbers  = any([likes, retweets, replies, impressions])
     has_posts    = bool(account_posts)
-    post_count   = 10 if has_posts else 3
+    post_count   = 10
 
     # アカウントの過去ポストセクション
     account_section = ""
