@@ -46,6 +46,11 @@ def _parse_tweet_id(url: str) -> str | None:
     m = re.search(r'/status/(\d+)', url)
     return m.group(1) if m else None
 
+def _parse_username(account: str) -> str:
+    s = account.strip()
+    s = re.sub(r'^https?://(www\.)?(x|twitter)\.com/', '', s)
+    return s.split('/')[0].split('?')[0].lstrip('@')
+
 def _extract_tweets_from_graphql(obj, out: list) -> None:
     if not isinstance(obj, dict):
         return
@@ -139,13 +144,67 @@ async def _fetch_by_url_async(tweet_url: str) -> dict:
     return main
 
 
+async def _fetch_user_posts_async(account: str) -> list:
+    from playwright.async_api import async_playwright
+
+    creds = _load_cookies()
+    if not creds:
+        raise RuntimeError("NO_ACCOUNT")
+
+    username = _parse_username(account)
+    if not username:
+        raise ValueError("有効なアカウントを入力してください")
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        ctx = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            locale="ja-JP",
+        )
+        await ctx.add_cookies([
+            {"name": "auth_token", "value": creds["auth_token"],
+             "domain": ".x.com", "path": "/"},
+            {"name": "ct0",        "value": creds["ct0"],
+             "domain": ".x.com", "path": "/"},
+        ])
+
+        captured = []
+        def on_response_sync(resp):
+            if "UserTweets" in resp.url:
+                captured.append(resp)
+
+        page = await ctx.new_page()
+        page.on("response", on_response_sync)
+
+        await page.goto(f"https://x.com/{username}", wait_until="domcontentloaded", timeout=25000)
+        await page.wait_for_timeout(5000)
+
+        posts = []
+        for resp in captured:
+            try:
+                body = await resp.json()
+                _extract_tweets_from_graphql(body, posts)
+            except Exception:
+                pass
+
+        await browser.close()
+
+    # リツイートを除外して最新30件
+    originals = [p for p in posts if not p.get("text", "").startswith("RT @")]
+    return originals[:30]
+
+
 # ── routes ────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """あなたはXのバズ投稿の専門アナリストです。
 投稿を分析してなぜバズったのかを解明し、同じメカニズムを活かした新しい投稿案を作成します。
 必ず指定のJSON形式のみで回答してください。マークダウンや説明文は不要です。"""
 
-def build_prompt(post_content, likes, retweets, replies, impressions, theme):
+def build_prompt(post_content, likes, retweets, replies, impressions, theme, account_posts=None):
     parts = []
     if likes:       parts.append(f"いいね: {likes}")
     if retweets:    parts.append(f"RT: {retweets}")
@@ -153,26 +212,60 @@ def build_prompt(post_content, likes, retweets, replies, impressions, theme):
     if impressions: parts.append(f"インプレッション: {impressions}")
     eng = "　".join(parts) if parts else "不明"
 
-    has_numbers = any([likes, retweets, replies, impressions])
-    eng_analysis_task = ""
-    eng_analysis_json = ""
+    has_numbers  = any([likes, retweets, replies, impressions])
+    has_posts    = bool(account_posts)
+    post_count   = 10 if has_posts else 3
+
+    # アカウントの過去ポストセクション
+    account_section = ""
+    style_task      = ""
+    style_json      = ""
+    if has_posts:
+        texts = "\n".join(f"- {p['text']}" for p in account_posts[:25])
+        account_section = f"\n【アカウントの過去ポスト（思考スタイル参考）】\n{texts}\n"
+        style_task = """
+### 2. 思考スタイル分析
+過去ポストからこのアカウントの思考・文体を分析：
+- voice: 文体・口調の特徴（話し言葉/書き言葉、丁寧度、テンションなど）
+- topics: よく扱うテーマ・関心領域
+- patterns: 繰り返し使う表現・構成パターン・特有のフレーズ
+- personality: 発信者の個性・キャラクター（1〜2文）
+"""
+        style_json = """  "style_analysis": {
+    "voice": "...", "topics": "...", "patterns": "...", "personality": "..."
+  },"""
+
+    # エンゲージメント分析セクション
+    eng_task = ""
+    eng_json  = ""
     if has_numbers:
-        eng_analysis_task = """
-### 2. エンゲージメント数値分析
+        n = 3 if has_posts else 2
+        eng_task = f"""
+### {n}. エンゲージメント数値分析
 - rate: エンゲージメント率の評価（インプレ比でのいいね・RT・返信の割合）
 - rt_like_ratio: RT/いいね比率が示すもの（高い＝情報拡散型、低い＝感情共感型）
 - reply_pattern: 返信数の多寡が示すもの（多い＝議論・論争性、少ない＝一方的共感）
 - virality: 数値から読み取れる拡散パターンの評価（一言で）
 - insight: この数値構造が次の投稿設計にどう活かせるか（2文以内）
 """
-        eng_analysis_json = """  "engagement_analysis": {
+        eng_json = """  "engagement_analysis": {
     "rate": "...", "rt_like_ratio": "...", "reply_pattern": "...",
     "virality": "...", "insight": "..."
   },"""
 
-    return f"""以下のXポストを分析してください。
+    last_n = 2 + (1 if has_posts else 0) + (1 if has_numbers else 0)
+    style_instruction = (
+        "上記の思考スタイルを完全にコピーした口調・文体・構成で、" if has_posts else "同じバズのメカニズムで"
+    )
 
-【ポスト内容】
+    posts_example = "\n".join(
+        f'    {{"text": "...", "reason": "..."}}' + ("," if i < post_count - 1 else "")
+        for i in range(post_count)
+    )
+
+    return f"""以下のXポストを分析してください。
+{account_section}
+【分析対象ポスト】
 {post_content}
 
 【エンゲージメント】
@@ -189,9 +282,9 @@ def build_prompt(post_content, likes, retweets, replies, impressions, theme):
 - emotion: 感情トリガー（共感/驚き/怒り/笑い/欲求など）
 - keywords: 刺さった単語・フレーズ（配列）
 - summary: バズった理由を2〜3文で
-{eng_analysis_task}
-### {'3' if has_numbers else '2'}. 新投稿案（3案）
-同じバズのメカニズムで別テーマ・別切り口の投稿を3案。各案に text と reason を添えて。
+{style_task}{eng_task}
+### {last_n}. 新投稿案（{post_count}案）
+{style_instruction}バズのメカニズムを活かした別テーマ・別切り口の投稿を{post_count}案。各案に text と reason を添えて。
 
 ## 返却形式（JSON only）
 {{
@@ -199,11 +292,9 @@ def build_prompt(post_content, likes, retweets, replies, impressions, theme):
     "hook": "...", "structure": "...", "emotion": "...",
     "keywords": ["..."], "summary": "..."
   }},
-{eng_analysis_json}
+{style_json}{eng_json}
   "posts": [
-    {{"text": "...", "reason": "..."}},
-    {{"text": "...", "reason": "..."}},
-    {{"text": "...", "reason": "..."}}
+{posts_example}
   ]
 }}"""
 
@@ -231,6 +322,25 @@ def setup_account():
         return jsonify({"error": "auth_token と ct0 は必須です"}), 400
     _save_cookies(auth_token, ct0, username)
     return jsonify({"active": 1, "username": username})
+
+
+@app.route("/fetch_user_posts", methods=["POST"])
+def fetch_user_posts():
+    d       = request.get_json()
+    account = (d.get("account") or "").strip()
+    if not account:
+        return jsonify({"error": "アカウントを入力してください"}), 400
+    try:
+        posts = asyncio.run(_fetch_user_posts_async(account))
+        return jsonify({"posts": posts, "count": len(posts)})
+    except RuntimeError as e:
+        if "NO_ACCOUNT" in str(e):
+            return jsonify({"error": "no_account"}), 401
+        return jsonify({"error": str(e)}), 500
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"取得エラー: {e}"}), 500
 
 
 @app.route("/fetch_by_url", methods=["POST"])
@@ -264,6 +374,7 @@ def analyze():
         return jsonify({"error": "ANTHROPIC_API_KEY が設定されていません"}), 500
 
     client = anthropic.Anthropic(api_key=api_key)
+    account_posts = data.get("account_posts") or None
     prompt = build_prompt(
         post_content,
         data.get("likes", ""),
@@ -271,12 +382,13 @@ def analyze():
         data.get("replies", ""),
         data.get("impressions", ""),
         data.get("theme", ""),
+        account_posts=account_posts,
     )
 
     try:
         msg = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=2048,
+            max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )

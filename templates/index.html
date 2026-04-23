@@ -282,6 +282,49 @@
   .setup-result { margin-top: 12px; font-size: 12px; min-height: 18px; }
   .setup-result.ok  { color: var(--success); }
   .setup-result.err { color: #e74c3c; }
+
+  /* ACCOUNT POSTS SECTION */
+  .account-posts-section {
+    background: rgba(124, 58, 237, 0.05);
+    border: 1px solid rgba(124, 58, 237, 0.25);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .account-posts-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .account-posts-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent2), #a855f7);
+    display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+  }
+  .account-posts-title { font-size: 14px; font-weight: 700; }
+  .account-posts-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .posts-loaded-badge {
+    display: none;
+    background: rgba(124, 58, 237, 0.15); border: 1px solid rgba(124, 58, 237, 0.35);
+    border-radius: 20px; padding: 3px 12px; font-size: 12px; font-weight: 700;
+    color: #a855f7; margin-top: 10px;
+  }
+  .posts-sample { margin-top: 10px; display: none; }
+  .posts-sample-item {
+    font-size: 12px; color: var(--muted); padding: 6px 0;
+    border-bottom: 1px solid var(--border); line-height: 1.5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* STYLE ANALYSIS CARD */
+  #styleCard { display: none; }
+  .style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .style-grid { grid-template-columns: 1fr; } }
+  .style-item { background: #0d0d18; border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .style-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #a855f7; margin-bottom: 8px; }
+  .style-value { font-size: 14px; line-height: 1.7; color: var(--text); }
+  .personality-box {
+    background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(168,85,247,0.06));
+    border: 1px solid rgba(124,58,237,0.25);
+    border-radius: 12px; padding: 18px; font-size: 14px; line-height: 1.8; color: var(--text); margin-top: 12px;
+  }
+  .personality-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #a855f7; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -393,6 +436,25 @@
       <div class="char-count" id="charCount">0 文字</div>
     </div>
 
+    <!-- アカウント思考スタイル読み込み -->
+    <div class="account-posts-section">
+      <div class="account-posts-header">
+        <div class="account-posts-icon">🧠</div>
+        <div>
+          <div class="account-posts-title">アカウントの思考スタイルを読み込む（任意）</div>
+          <div class="account-posts-sub">過去ポストを読み込むと口調・文体をコピーした投稿案を10個生成</div>
+        </div>
+      </div>
+      <div class="url-row">
+        <input type="text" id="styleAccount" placeholder="@username または https://x.com/username">
+        <button class="btn-fetch" id="styleBtn" onclick="fetchUserPosts()" style="background:linear-gradient(135deg,var(--accent2),#a855f7)">読み込む</button>
+      </div>
+      <div class="url-status" id="styleStatus"></div>
+      <div class="posts-loaded-badge" id="postsLoadedBadge"></div>
+      <div class="posts-sample" id="postsSample"></div>
+      <input type="hidden" id="accountPostsData" value="">
+    </div>
+
     <div class="form-group" style="margin-bottom:24px">
       <label>発信テーマ・ジャンル（任意）</label>
       <input type="text" id="theme" placeholder="例：副業・AI活用・マーケティング など">
@@ -440,6 +502,29 @@
       </div>
     </div>
 
+    <!-- 思考スタイル分析 -->
+    <div class="card" id="styleCard">
+      <div class="section-title">思考スタイル分析</div>
+      <div class="style-grid">
+        <div class="style-item">
+          <div class="style-label">文体・口調</div>
+          <div class="style-value" id="styleVoice"></div>
+        </div>
+        <div class="style-item">
+          <div class="style-label">テーマ・関心領域</div>
+          <div class="style-value" id="styleTopics"></div>
+        </div>
+        <div class="style-item" style="grid-column:1/-1">
+          <div class="style-label">繰り返すパターン・フレーズ</div>
+          <div class="style-value" id="stylePatterns"></div>
+        </div>
+      </div>
+      <div class="personality-box">
+        <div class="personality-label">発信者の個性・キャラクター</div>
+        <div id="stylePersonality"></div>
+      </div>
+    </div>
+
     <!-- エンゲージメント数値分析 -->
     <div class="card" id="engagementCard">
       <div class="section-title">エンゲージメント数値分析</div>
@@ -466,7 +551,7 @@
 
     <!-- 新投稿案 -->
     <div class="card">
-      <div class="section-title">新しい投稿案（3案）</div>
+      <div class="section-title" id="postsTitle">新しい投稿案</div>
       <div class="posts-list" id="postsList"></div>
     </div>
 
@@ -494,6 +579,60 @@
     } catch (_) {}
   }
   checkAccountStatus();
+
+  // アカウント思考スタイル読み込み
+  async function fetchUserPosts() {
+    const account = document.getElementById('styleAccount').value.trim();
+    if (!account) { setStyleStatus('err', 'アカウントを入力してください'); return; }
+
+    const btn = document.getElementById('styleBtn');
+    btn.disabled = true;
+    setStyleStatus('loading', 'ポストを読み込み中... (数秒かかります)');
+    document.getElementById('postsLoadedBadge').style.display = 'none';
+    document.getElementById('postsSample').style.display = 'none';
+    document.getElementById('accountPostsData').value = '';
+
+    try {
+      const res  = await fetch('/fetch_user_posts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        if (data.error === 'no_account') {
+          setStyleStatus('err', 'Xアカウントが未設定です。上の設定からログインしてください。');
+        } else {
+          setStyleStatus('err', data.error);
+        }
+        return;
+      }
+
+      document.getElementById('accountPostsData').value = JSON.stringify(data.posts);
+
+      const badge = document.getElementById('postsLoadedBadge');
+      badge.textContent = `✓ ${data.count}件のポストを読み込みました`;
+      badge.style.display = 'inline-block';
+
+      const sample = document.getElementById('postsSample');
+      sample.innerHTML = data.posts.slice(0, 3).map(p =>
+        `<div class="posts-sample-item">${escapeHtml(p.text)}</div>`
+      ).join('');
+      sample.style.display = 'block';
+
+      setStyleStatus('ok', `@${data.posts[0]?.author || account} の思考スタイルを読み込みました`);
+    } catch (e) {
+      setStyleStatus('err', '通信エラー: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function setStyleStatus(type, msg) {
+    const el = document.getElementById('styleStatus');
+    el.className = 'url-status ' + type;
+    el.textContent = msg;
+  }
 
   // アカウント設定
   async function setupAccount() {
@@ -614,12 +753,16 @@
       const res  = await fetch('/analyze', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          post_content: content,
-          likes:        document.getElementById('likes').value,
-          retweets:     document.getElementById('retweets').value,
-          replies:      document.getElementById('replies').value,
-          impressions:  document.getElementById('impressions').value,
-          theme:        document.getElementById('theme').value,
+          post_content:  content,
+          likes:         document.getElementById('likes').value,
+          retweets:      document.getElementById('retweets').value,
+          replies:       document.getElementById('replies').value,
+          impressions:   document.getElementById('impressions').value,
+          theme:         document.getElementById('theme').value,
+          account_posts: (() => {
+            const v = document.getElementById('accountPostsData').value;
+            try { return v ? JSON.parse(v) : null; } catch { return null; }
+          })(),
         }),
       });
       const data = await res.json();
@@ -649,6 +792,18 @@
       kwContainer.appendChild(tag);
     });
 
+    const styleCard = document.getElementById('styleCard');
+    const sa = data.style_analysis;
+    if (sa) {
+      document.getElementById('styleVoice').textContent      = sa.voice       || '';
+      document.getElementById('styleTopics').textContent     = sa.topics      || '';
+      document.getElementById('stylePatterns').textContent   = sa.patterns    || '';
+      document.getElementById('stylePersonality').textContent= sa.personality || '';
+      styleCard.style.display = 'block';
+    } else {
+      styleCard.style.display = 'none';
+    }
+
     const engCard = document.getElementById('engagementCard');
     const ea = data.engagement_analysis;
     if (ea) {
@@ -661,6 +816,10 @@
     } else {
       engCard.style.display = 'none';
     }
+
+    const postCount = (data.posts || []).length;
+    document.getElementById('postsTitle').textContent =
+      `新しい投稿案（${postCount}案）` + (sa ? '　🧠 思考スタイルをコピー' : '');
 
     const list = document.getElementById('postsList');
     list.innerHTML = '';
