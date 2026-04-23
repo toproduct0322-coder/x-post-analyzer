@@ -615,7 +615,7 @@
       badge.style.display = 'inline-block';
 
       const sample = document.getElementById('postsSample');
-      sample.innerHTML = data.posts.slice(0, 3).map(p =>
+      sample.innerHTML = data.posts.slice(0, 10).map(p =>
         `<div class="posts-sample-item">${escapeHtml(p.text)}</div>`
       ).join('');
       sample.style.display = 'block';
