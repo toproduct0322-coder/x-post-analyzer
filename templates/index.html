@@ -337,42 +337,6 @@
 
 <div class="container">
 
-  <!-- アカウント未設定バナー -->
-  <div class="account-banner" id="noBanner">
-    Xアカウントが未設定です。エンゲージメント自動取得を使うには
-    <a onclick="document.getElementById('setupDetails').open=true; setupDetails.scrollIntoView({behavior:'smooth'})">
-      アカウントを設定
-    </a>してください。
-  </div>
-
-  <!-- X アカウント設定 -->
-  <details class="setup-details" id="setupDetails">
-    <summary>
-      X アカウント設定（エンゲージメント自動取得に必要）
-    </summary>
-    <div class="setup-body">
-      <p class="setup-desc">
-        Chromeで <strong>x.com</strong> にログインした状態で以下を開きます：<br>
-        <strong>F12（DevTools）→ Application タブ → Cookies → https://x.com</strong><br>
-        一覧から <code>auth_token</code> と <code>ct0</code> の Value をコピーして貼り付けてください。
-      </p>
-      <div class="form-group">
-        <label>auth_token（必須）</label>
-        <input type="password" id="setupAuthToken" placeholder="auth_token の値を貼り付け">
-      </div>
-      <div class="form-group">
-        <label>ct0（必須）</label>
-        <input type="text" id="setupCt0" placeholder="ct0 の値を貼り付け">
-      </div>
-      <div class="form-group" style="margin-bottom:16px">
-        <label>ユーザー名（任意・管理用ラベル）</label>
-        <input type="text" id="setupUsername" placeholder="@username（省略可）">
-      </div>
-      <button class="btn-setup" id="setupBtn" onclick="setupAccount()">保存して有効化</button>
-      <div class="setup-result" id="setupResult"></div>
-    </div>
-  </details>
-
   <!-- 入力カード -->
   <div class="card">
     <div class="card-header">
@@ -567,17 +531,6 @@
     charCount.classList.toggle('over', len > 280);
   });
 
-  // 起動時アカウント確認
-  async function checkAccountStatus() {
-    try {
-      const res  = await fetch('/account_status');
-      const data = await res.json();
-      const ok   = data.active > 0;
-      document.getElementById('noBanner').style.display = ok ? 'none' : 'block';
-    } catch (_) {}
-  }
-  checkAccountStatus();
-
   // アカウント思考スタイル読み込み
   async function fetchUserPosts() {
     const account = document.getElementById('styleAccount').value.trim();
@@ -598,11 +551,7 @@
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        if (data.error === 'no_account') {
-          setStyleStatus('err', 'Xアカウントが未設定です。上の設定からログインしてください。');
-        } else {
-          setStyleStatus('err', data.error);
-        }
+        setStyleStatus('err', data.error);
         return;
       }
 
@@ -632,44 +581,6 @@
     el.textContent = msg;
   }
 
-  // アカウント設定
-  async function setupAccount() {
-    const btn       = document.getElementById('setupBtn');
-    const result    = document.getElementById('setupResult');
-    const authToken = document.getElementById('setupAuthToken').value.trim();
-    const ct0       = document.getElementById('setupCt0').value.trim();
-    const username  = document.getElementById('setupUsername').value.trim();
-
-    if (!authToken || !ct0) {
-      result.className = 'setup-result err';
-      result.textContent = 'auth_token と ct0 は必須です';
-      return;
-    }
-    btn.disabled = true;
-    result.className = 'setup-result loading';
-    result.textContent = '保存中...';
-    try {
-      const res  = await fetch('/setup_account', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, auth_token: authToken, ct0 }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        result.className = 'setup-result err';
-        result.textContent = data.error || 'エラー';
-      } else {
-        result.className = 'setup-result ok';
-        result.textContent = '設定完了！';
-        document.getElementById('noBanner').style.display = 'none';
-      }
-    } catch (e) {
-      result.className = 'setup-result err';
-      result.textContent = '通信エラー: ' + e.message;
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
   // ツイートURL → エンゲージメント＋本文を自動取得
   async function fetchByUrl() {
     const tweetUrl = document.getElementById('tweetUrl').value.trim();
@@ -688,12 +599,7 @@
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        if (data.error === 'no_account') {
-          setUrlStatus('err', 'Xアカウントが未設定です。上の「X アカウント設定」から設定してください。');
-          document.getElementById('noBanner').style.display = 'block';
-        } else {
-          setUrlStatus('err', data.error);
-        }
+        setUrlStatus('err', data.error);
         return;
       }
 
