@@ -1,0 +1,9 @@
+.git
+.gitignore
+.env
+.deploy-env.yaml
+venv
+__pycache__
+*.pyc
+.DS_Store
+accounts.db
